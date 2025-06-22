@@ -46,7 +46,7 @@
             text-align: center;
             width: 90%;
             max-width: 500px;
-            cursor: pointer; /* Indicate the whole box is clickable */
+            cursor: pointer;
         }
 
         h1 {
@@ -180,7 +180,7 @@
         #ui-feedback.close { color: var(--close-color); border-color: var(--close-color); }
         #ui-feedback.miss { color: var(--miss-color); border-color: var(--miss-color); }
 
-        #action-button {
+        #action-button, #practice-mode-button {
             margin-top: 20px;
             padding: 12px 25px;
             font-size: 1rem;
@@ -193,9 +193,22 @@
             transition: background-color 0.2s ease, transform 0.2s ease;
         }
 
-        #action-button:hover {
+        #action-button:hover, #practice-mode-button:hover {
             background-color: #2980b9;
             transform: translateY(-2px);
+        }
+
+        #practice-mode-button {
+            background-color: #7f8c8d;
+        }
+        #practice-mode-button:hover {
+            background-color: #95a5a6;
+        }
+        #practice-mode-button.active {
+            background-color: var(--perfect-color);
+        }
+        #practice-mode-button.active:hover {
+            background-color: #27ae60;
         }
 
         .hidden {
@@ -215,11 +228,13 @@
         </div>
 
         <button id="action-button" class="hidden">Continue</button>
+        <button id="practice-mode-button">Practice Mode</button> <!-- NEW -->
     </div>
 
     <script>
         const gameContainer = document.getElementById('game-container');
         const actionButton = document.getElementById('action-button');
+        const practiceModeButton = document.getElementById('practice-mode-button'); // NEW
         const stageDisplay = document.getElementById('stage-display');
         const highscoreDisplay = document.getElementById('highscore-display');
         const body = document.body;
@@ -232,6 +247,10 @@
         let lastRoundSuccess = false;
         let currentStageIndex = 0;
         let highestStageAchieved = 1;
+        
+        // --- NEW: Practice Mode State ---
+        let isPracticeMode = false;
+        let metronomeInterval = null;
 
         let targetDisplay, progressContainer, progressBar, progressMarker, instructions;
 
@@ -281,6 +300,20 @@
             oscillator.start();
             oscillator.stop(audioCtx.currentTime + 0.3);
         }
+        // --- NEW: Metronome Sound ---
+        function playMetronomeTick() {
+            if (!audioCtx) return;
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.4, audioCtx.currentTime + 0.01);
+            gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.1);
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            oscillator.frequency.value = 1000; oscillator.type = 'sine';
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 0.1);
+        }
 
         function updateHighScoreDisplay() {
             highscoreDisplay.textContent = `Highest Stage: ${highestStageAchieved}`;
@@ -309,9 +342,10 @@
             isHolding = false;
             
             let minTime, maxTime;
-            if (currentStageIndex < baseStages.length) {
-                minTime = baseStages[currentStageIndex].min;
-                maxTime = baseStages[currentStageIndex].max;
+            if (isPracticeMode || currentStageIndex < baseStages.length) {
+                const stageIndex = isPracticeMode ? baseStages.length - 1 : currentStageIndex;
+                minTime = baseStages[stageIndex].min;
+                maxTime = baseStages[stageIndex].max;
             } else {
                 let previousMax = baseStages[baseStages.length - 1].max;
                 const stagesAfterBase = currentStageIndex - (baseStages.length - 1);
@@ -319,74 +353,56 @@
                 maxTime = minTime * 1.5;
             }
             
-            instructions.textContent = "When you're ready, click and hold anywhere on this box.";
-            stageDisplay.textContent = `Stage ${currentStageIndex + 1}`;
+            instructions.textContent = "Click and hold until the time. Get within 0.5s!";
+            stageDisplay.textContent = isPracticeMode ? 'Practice Mode' : `Stage ${currentStageIndex + 1}`;
             targetTime = Math.random() * (maxTime - minTime) + minTime;
             targetDisplay.textContent = `${targetTime.toFixed(2)}s`;
         }
 
         function updateProgress() {
             if (!isHolding) return;
-
             const elapsedTime = (Date.now() - startTime) / 1000;
             const remainingTime = Math.max(0, targetTime - elapsedTime);
             const progressPercent = Math.min(100, (elapsedTime / targetTime) * 100);
-
             targetDisplay.textContent = `${remainingTime.toFixed(2)}s`;
             progressBar.style.width = `${100 - progressPercent}%`;
             progressMarker.style.left = `${progressPercent}%`;
-
             requestAnimationFrame(updateProgress);
         }
 
         function handleMouseDown(event) {
-            // Prevent button clicks from triggering this
-            if (event.target === actionButton) return;
+            if (event.target === actionButton || event.target === practiceModeButton) return;
+            if (!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
 
-            if (!audioCtx) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            }
-
-            // --- THIS IS THE NEW LOGIC ---
             if (gameActive) {
-                // If the game is active, start the timer
                 if (!isHolding) {
                     event.preventDefault();
                     isHolding = true;
                     startTime = Date.now();
                     body.classList.add('holding');
                     playSound('start');
-
                     const fadeDurationMs = targetTime * 0.20 * 1000;
-                    
                     setTimeout(() => {
                         if (!isHolding) return;
-                        
                         targetDisplay.style.transitionDuration = `${fadeDurationMs}ms`;
                         targetDisplay.classList.add('fading-out');
-
                         progressContainer.style.transitionDuration = `${fadeDurationMs}ms`;
                         progressContainer.classList.add('fading-out');
                     }, 10);
-
                     requestAnimationFrame(updateProgress);
                 }
             } else {
-                // If game is not active, a click on the box means "continue/retry"
                 handleNextAction();
             }
         }
         
         function handleMouseUp() {
             if (!isHolding) return;
-            
             const endTime = Date.now();
             const heldDuration = (endTime - startTime) / 1000;
-            
             isHolding = false;
             gameActive = false;
             body.classList.remove('holding');
-            
             playSound('end');
             showResults(heldDuration);
         }
@@ -395,66 +411,51 @@
             const difference = Math.abs(targetTime - heldDuration);
             let message = '';
             let celebrationClass = '';
-            
-            if (difference <= 0.05) {
-                celebrationClass = 'perfect';
-                message = "PERFECT!";
-                playSound('success');
-            } else if (difference <= 0.20) {
-                celebrationClass = 'great';
-                message = "Incredible!";
-                playSound('success');
-            } else if (difference <= 0.50) {
-                celebrationClass = 'good';
-                message = "Good try!";
-                playCloseMissSound();
-            } else if (difference <= 1.0) {
-                celebrationClass = 'close';
-                message = "So close!";
-                playSound('miss');
-            } else {
-                celebrationClass = 'miss';
-                message = "Not quite!";
-                playSound('miss');
-            }
+            if (difference <= 0.06) { celebrationClass = 'perfect'; message = "PERFECT!"; playSound('success'); } 
+            else if (difference <= 0.21) { celebrationClass = 'great'; message = "Incredible!"; playSound('success'); } 
+            else if (difference <= 0.51) { celebrationClass = 'good'; message = "Good try!"; playCloseMissSound(); } 
+            else if (difference <= 1.01) { celebrationClass = 'close'; message = "So close!"; playSound('miss'); } 
+            else { celebrationClass = 'miss'; message = "Not quite!"; playSound('miss'); }
 
             lastRoundSuccess = (celebrationClass === 'perfect' || celebrationClass === 'great' || celebrationClass === 'good');
             
-            if (lastRoundSuccess) {
-                const completedStage = currentStageIndex + 1;
-                if (completedStage > highestStageAchieved) {
-                    highestStageAchieved = completedStage;
-                    updateHighScoreDisplay();
+            // --- MODIFIED: High score and result header logic for Practice Mode ---
+            let resultHeader;
+            if (isPracticeMode) {
+                resultHeader = "<h2>Practice Result</h2>";
+            } else {
+                if (lastRoundSuccess) {
+                    const completedStage = currentStageIndex + 1;
+                    if (completedStage > highestStageAchieved) {
+                        highestStageAchieved = completedStage;
+                        updateHighScoreDisplay();
+                    }
+                    resultHeader = "<h2>Stage Clear!</h2>";
+                } else {
+                    resultHeader = "<h2>Stage Failed!</h2><p>You've been reset to Stage 1.</p>";
                 }
             }
 
-            let resultHeader = lastRoundSuccess ?
-                "<h2>Stage Clear!</h2>" :
-                "<h2>Stage Failed!</h2><p>You've been reset to Stage 1.</p>";
-
             const heldPercent = (heldDuration / targetTime) * 100;
-            
             uiFeedback.className = 'results-mode ' + celebrationClass;
             uiFeedback.innerHTML = `
                 ${resultHeader}
-                
                 <p class="result-original-target">${targetTime.toFixed(2)}s</p>
                 <div class="result-progress-container">
                     <div class="result-progress-bar ${celebrationClass}" style="width: ${heldPercent}%;"></div>
                 </div>
-
-                <p>
-                  Your time: <strong>${heldDuration.toFixed(2)}s</strong><br>
-                  Difference: <strong>${difference.toFixed(2)}s</strong>
-                </p>
+                <p>Your time: <strong>${heldDuration.toFixed(2)}s</strong><br>Difference: <strong>${difference.toFixed(2)}s</strong></p>
                 <p><em>${message}</em></p>
             `;
-            
             actionButton.classList.remove('hidden');
             updateActionButton();
         }
 
         function updateActionButton() {
+            if (isPracticeMode) {
+                actionButton.textContent = "Practice Again";
+                return;
+            }
             if (lastRoundSuccess) {
                 actionButton.textContent = `Continue to Stage ${currentStageIndex + 2}`;
             } else {
@@ -463,6 +464,10 @@
         }
 
         function handleNextAction() {
+            if (isPracticeMode) {
+                setupNewRound();
+                return;
+            }
             if (lastRoundSuccess) {
                 currentStageIndex++;
             } else {
@@ -470,14 +475,32 @@
             }
             setupNewRound();
         }
+
+        // --- NEW: Function to toggle practice mode ---
+        function togglePracticeMode() {
+            isPracticeMode = !isPracticeMode;
+            if (!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+
+            if (isPracticeMode) {
+                practiceModeButton.textContent = 'Exit Practice';
+                practiceModeButton.classList.add('active');
+                metronomeInterval = setInterval(playMetronomeTick, 1000);
+            } else {
+                practiceModeButton.textContent = 'Practice Mode';
+                practiceModeButton.classList.remove('active');
+                clearInterval(metronomeInterval);
+                metronomeInterval = null;
+            }
+            // Reset to the appropriate round (practice or main game)
+            setupNewRound();
+        }
         
         // Event Listeners
         gameContainer.addEventListener('mousedown', handleMouseDown);
         window.addEventListener('mouseup', handleMouseUp);
-        // We only need one listener for the button now, since the box handles the other case
         actionButton.addEventListener('click', handleNextAction);
+        practiceModeButton.addEventListener('click', togglePracticeMode); // NEW
         
-        // Touch support - this will also trigger handleMouseDown
         gameContainer.addEventListener('touchstart', handleMouseDown, { passive: false });
         window.addEventListener('touchend', handleMouseUp);
 
