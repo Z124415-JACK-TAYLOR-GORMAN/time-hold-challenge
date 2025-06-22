@@ -353,7 +353,7 @@
                 maxTime = minTime * 1.5;
             }
             
-            instructions.textContent = "Click and hold until the time. Get within 0.5s!";
+            instructions.textContent = "Click and hold until the time. Get within ±0.5s!";
             stageDisplay.textContent = isPracticeMode ? 'Practice Mode' : `Stage ${currentStageIndex + 1}`;
             targetTime = Math.random() * (maxTime - minTime) + minTime;
             targetDisplay.textContent = `${targetTime.toFixed(2)}s`;
