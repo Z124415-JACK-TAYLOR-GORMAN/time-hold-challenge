@@ -228,13 +228,13 @@
         </div>
 
         <button id="action-button" class="hidden">Continue</button>
-        <button id="practice-mode-button">Practice Mode</button> <!-- NEW -->
+        <button id="practice-mode-button">Practice Mode</button>
     </div>
 
     <script>
         const gameContainer = document.getElementById('game-container');
         const actionButton = document.getElementById('action-button');
-        const practiceModeButton = document.getElementById('practice-mode-button'); // NEW
+        const practiceModeButton = document.getElementById('practice-mode-button');
         const stageDisplay = document.getElementById('stage-display');
         const highscoreDisplay = document.getElementById('highscore-display');
         const body = document.body;
@@ -248,7 +248,6 @@
         let currentStageIndex = 0;
         let highestStageAchieved = 1;
         
-        // --- NEW: Practice Mode State ---
         let isPracticeMode = false;
         let metronomeInterval = null;
 
@@ -300,7 +299,6 @@
             oscillator.start();
             oscillator.stop(audioCtx.currentTime + 0.3);
         }
-        // --- NEW: Metronome Sound ---
         function playMetronomeTick() {
             if (!audioCtx) return;
             const oscillator = audioCtx.createOscillator();
@@ -342,10 +340,13 @@
             isHolding = false;
             
             let minTime, maxTime;
-            if (isPracticeMode || currentStageIndex < baseStages.length) {
-                const stageIndex = isPracticeMode ? baseStages.length - 1 : currentStageIndex;
-                minTime = baseStages[stageIndex].min;
-                maxTime = baseStages[stageIndex].max;
+            if (isPracticeMode) {
+                // In practice mode, use the last base stage as a good range
+                minTime = baseStages[baseStages.length - 1].min;
+                maxTime = baseStages[baseStages.length - 1].max;
+            } else if (currentStageIndex < baseStages.length) {
+                minTime = baseStages[currentStageIndex].min;
+                maxTime = baseStages[currentStageIndex].max;
             } else {
                 let previousMax = baseStages[baseStages.length - 1].max;
                 const stagesAfterBase = currentStageIndex - (baseStages.length - 1);
@@ -353,7 +354,7 @@
                 maxTime = minTime * 1.5;
             }
             
-            instructions.textContent = "Click and hold until the time. Get within ±0.5s!";
+            instructions.textContent = "Click and hold until the time. Get within 0.5s!";
             stageDisplay.textContent = isPracticeMode ? 'Practice Mode' : `Stage ${currentStageIndex + 1}`;
             targetTime = Math.random() * (maxTime - minTime) + minTime;
             targetDisplay.textContent = `${targetTime.toFixed(2)}s`;
@@ -419,7 +420,6 @@
 
             lastRoundSuccess = (celebrationClass === 'perfect' || celebrationClass === 'great' || celebrationClass === 'good');
             
-            // --- MODIFIED: High score and result header logic for Practice Mode ---
             let resultHeader;
             if (isPracticeMode) {
                 resultHeader = "<h2>Practice Result</h2>";
@@ -433,6 +433,9 @@
                     resultHeader = "<h2>Stage Clear!</h2>";
                 } else {
                     resultHeader = "<h2>Stage Failed!</h2><p>You've been reset to Stage 1.</p>";
+                    // --- THE FIX IS HERE ---
+                    // Immediately reset the stage index upon failure.
+                    currentStageIndex = 0; 
                 }
             }
 
@@ -470,13 +473,11 @@
             }
             if (lastRoundSuccess) {
                 currentStageIndex++;
-            } else {
-                currentStageIndex = 0;
             }
+            // No 'else' needed here, as the index is already reset in showResults on failure.
             setupNewRound();
         }
 
-        // --- NEW: Function to toggle practice mode ---
         function togglePracticeMode() {
             isPracticeMode = !isPracticeMode;
             if (!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
@@ -491,7 +492,6 @@
                 clearInterval(metronomeInterval);
                 metronomeInterval = null;
             }
-            // Reset to the appropriate round (practice or main game)
             setupNewRound();
         }
         
@@ -499,7 +499,7 @@
         gameContainer.addEventListener('mousedown', handleMouseDown);
         window.addEventListener('mouseup', handleMouseUp);
         actionButton.addEventListener('click', handleNextAction);
-        practiceModeButton.addEventListener('click', togglePracticeMode); // NEW
+        practiceModeButton.addEventListener('click', togglePracticeMode);
         
         gameContainer.addEventListener('touchstart', handleMouseDown, { passive: false });
         window.addEventListener('touchend', handleMouseUp);
