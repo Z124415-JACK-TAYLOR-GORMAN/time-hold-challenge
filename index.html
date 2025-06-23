@@ -225,6 +225,7 @@
             display: none;
         }
 
+        /* --- NEW: Responsive rules for mobile --- */
         @media (max-width: 600px) {
             body {
                 padding: 20px 10px;
@@ -243,7 +244,7 @@
             }
 
             #button-wrapper {
-                flex-direction: column;
+                flex-direction: column; /* Stack buttons vertically */
                 gap: 10px;
             }
         }
@@ -409,7 +410,7 @@
                 maxTime = minTime * 1.5;
             }
             
-            instructions.textContent = "Click the button or anywhere in the box to begin.";
+            instructions.textContent = "Click and hold until the time. Get within ±0.5s!";
             stageDisplay.textContent = isPracticeMode ? 'Practice Mode' : `Stage ${currentStageIndex + 1}`;
             targetTime = Math.random() * (maxTime - minTime) + minTime;
             targetDisplay.textContent = `${targetTime.toFixed(2)}s`;
@@ -430,34 +431,35 @@
             requestAnimationFrame(updateProgress);
         }
 
-        // --- REFACTORED: This function ONLY handles starting the timer hold ---
         function handleMouseDown(event) {
-            // Ignore clicks on the practice button
             if (event.target === practiceModeButton) return;
             
-            // Only run if the game is active and we're not already holding
-            if (gameActive && !isHolding) {
-                if (!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
-                event.preventDefault();
-                isHolding = true;
-                startTime = Date.now();
-                body.classList.add('holding');
-                buttonWrapper.classList.add('hidden'); // Hide buttons on hold
-                playSound('start');
+            if (gameActive) {
+                if (!isHolding) {
+                    if (!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+                    event.preventDefault();
+                    isHolding = true;
+                    startTime = Date.now();
+                    body.classList.add('holding');
+                    buttonWrapper.classList.add('hidden');
+                    playSound('start');
 
-                if (isPracticeMode) {
-                    metronomeInterval = setInterval(playMetronomeTick, 1000);
+                    if (isPracticeMode) {
+                        metronomeInterval = setInterval(playMetronomeTick, 1000);
+                    }
+
+                    const fadeDurationMs = targetTime * 0.20 * 1000;
+                    setTimeout(() => {
+                        if (!isHolding) return;
+                        targetDisplay.style.transitionDuration = `${fadeDurationMs}ms`;
+                        targetDisplay.classList.add('fading-out');
+                        progressContainer.style.transitionDuration = `${fadeDurationMs}ms`;
+                        progressContainer.classList.add('fading-out');
+                    }, 10);
+                    requestAnimationFrame(updateProgress);
                 }
-
-                const fadeDurationMs = targetTime * 0.20 * 1000;
-                setTimeout(() => {
-                    if (!isHolding) return;
-                    targetDisplay.style.transitionDuration = `${fadeDurationMs}ms`;
-                    targetDisplay.classList.add('fading-out');
-                    progressContainer.style.transitionDuration = `${fadeDurationMs}ms`;
-                    progressContainer.classList.add('fading-out');
-                }, 10);
-                requestAnimationFrame(updateProgress);
+            } else {
+                handleNextAction();
             }
         }
         
@@ -472,7 +474,7 @@
             const endTime = Date.now();
             const heldDuration = (endTime - startTime) / 1000;
             isHolding = false;
-            gameActive = false; // Set game to inactive immediately
+            gameActive = false;
             body.classList.remove('holding');
             playSound('end');
             showResults(heldDuration);
@@ -541,23 +543,17 @@
             }
         }
 
-        // --- NEW: This function ONLY handles clicks after a round is over ---
-        function handleContinueClick(event) {
-            // Ignore clicks on the practice button
-            if (event.target === practiceModeButton) return;
-            // Only run if the game is over
-            if (!gameActive) {
-                if (isPracticeMode) {
-                    setupNewRound();
-                    return;
-                }
-                if (lastRoundSuccess) {
-                    currentStageIndex++;
-                }
+        function handleNextAction() {
+            if (isPracticeMode) {
                 setupNewRound();
+                return;
             }
+            if (lastRoundSuccess) {
+                currentStageIndex++;
+            }
+            setupNewRound();
         }
-        
+
         function togglePracticeMode() {
             isPracticeMode = !isPracticeMode;
             if (!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
@@ -579,7 +575,6 @@
         // Event Listeners
         gameContainer.addEventListener('mousedown', handleMouseDown);
         window.addEventListener('mouseup', handleMouseUp);
-        gameContainer.addEventListener('click', handleContinueClick); // NEW listener for continuing
         
         practiceModeButton.addEventListener('click', togglePracticeMode);
         
