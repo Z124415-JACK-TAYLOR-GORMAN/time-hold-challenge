@@ -25,10 +25,8 @@
             font-family: 'Poppins', sans-serif;
             background-color: var(--bg-color);
             color: var(--text-color);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
+            display: block;
+            padding: 40px 20px;
             margin: 0;
             user-select: none;
             transition: background-color 0.3s ease;
@@ -47,6 +45,14 @@
             width: 90%;
             max-width: 500px;
             cursor: pointer;
+            margin: 20px auto;
+            /* NEW: Add transition for the metronome flash */
+            transition: box-shadow 0.1s ease-out;
+        }
+
+        /* NEW: Class for the visual metronome tick */
+        #game-container.metronome-tick {
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2), 0 0 0 4px var(--text-color);
         }
 
         h1 {
@@ -231,6 +237,19 @@
         <button id="practice-mode-button">Practice Mode</button>
     </div>
 
+    <div style="width: 90%; max-width: 500px; margin: 20px auto; text-align: left; background-color: var(--container-bg); padding: 20px; border-radius: 15px;">
+        <p>Time Terror is a test of your internal clock and precision. The goal is to hold down your mouse button for the exact amount of time shown on the screen. Practice mode starts a metronome to follow! Can you set a new high score?</p>
+        <h2>How to Play</h2>
+        <ul style="padding-left: 20px;">
+            <li>If you fail, you reset to Stage 1. Your highest stage is always saved.</li>
+            <li>Use <strong>Practice Mode</strong> to train with a metronome without affecting your score.</li>
+        </ul>
+    </div>
+
+    <footer style="text-align: center; margin-top: 40px; opacity: 0.6;">
+        <p>© 2025 Time Terror by: Jack Gorman <a href="privacy.html" style="color: var(--text-color);">Privacy Policy</a></p>
+    </footer>
+
     <script>
         const gameContainer = document.getElementById('game-container');
         const actionButton = document.getElementById('action-button');
@@ -299,8 +318,17 @@
             oscillator.start();
             oscillator.stop(audioCtx.currentTime + 0.3);
         }
+        
+        // --- UPDATED: Metronome now provides a visual cue ---
         function playMetronomeTick() {
             if (!audioCtx) return;
+            // Visual Cue
+            gameContainer.classList.add('metronome-tick');
+            setTimeout(() => {
+                gameContainer.classList.remove('metronome-tick');
+            }, 100);
+
+            // Audio Cue
             const oscillator = audioCtx.createOscillator();
             const gainNode = audioCtx.createGain();
             gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
@@ -341,7 +369,6 @@
             
             let minTime, maxTime;
             if (isPracticeMode) {
-                // In practice mode, use the last base stage as a good range
                 minTime = baseStages[baseStages.length - 1].min;
                 maxTime = baseStages[baseStages.length - 1].max;
             } else if (currentStageIndex < baseStages.length) {
@@ -354,7 +381,7 @@
                 maxTime = minTime * 1.5;
             }
             
-            instructions.textContent = "Click and hold until the time. Get within 0.5s!";
+            instructions.textContent = "Click and hold to match the time. Get within 0.5s!";
             stageDisplay.textContent = isPracticeMode ? 'Practice Mode' : `Stage ${currentStageIndex + 1}`;
             targetTime = Math.random() * (maxTime - minTime) + minTime;
             targetDisplay.textContent = `${targetTime.toFixed(2)}s`;
@@ -363,16 +390,15 @@
         function updateProgress() {
             if (!isHolding) return;
             const elapsedTime = (Date.now() - startTime) / 1000;
-            const remainingTime = Math.max(0, targetTime - elapsedTime);
             const progressPercent = Math.min(100, (elapsedTime / targetTime) * 100);
-            targetDisplay.textContent = `${remainingTime.toFixed(2)}s`;
+            targetDisplay.textContent = `${elapsedTime.toFixed(2)}s`;
             progressBar.style.width = `${100 - progressPercent}%`;
             progressMarker.style.left = `${progressPercent}%`;
             requestAnimationFrame(updateProgress);
         }
 
         function handleMouseDown(event) {
-            if (event.target === actionButton || event.target === practiceModeButton) return;
+            if (event.target.tagName === 'BUTTON') return;
             if (!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
 
             if (gameActive) {
@@ -382,6 +408,11 @@
                     startTime = Date.now();
                     body.classList.add('holding');
                     playSound('start');
+
+                    if (isPracticeMode) {
+                        metronomeInterval = setInterval(playMetronomeTick, 1000);
+                    }
+
                     const fadeDurationMs = targetTime * 0.20 * 1000;
                     setTimeout(() => {
                         if (!isHolding) return;
@@ -399,6 +430,12 @@
         
         function handleMouseUp() {
             if (!isHolding) return;
+            
+            if (metronomeInterval) {
+                clearInterval(metronomeInterval);
+                metronomeInterval = null;
+            }
+
             const endTime = Date.now();
             const heldDuration = (endTime - startTime) / 1000;
             isHolding = false;
@@ -433,8 +470,6 @@
                     resultHeader = "<h2>Stage Clear!</h2>";
                 } else {
                     resultHeader = "<h2>Stage Failed!</h2><p>You've been reset to Stage 1.</p>";
-                    // --- THE FIX IS HERE ---
-                    // Immediately reset the stage index upon failure.
                     currentStageIndex = 0; 
                 }
             }
@@ -443,7 +478,7 @@
             uiFeedback.className = 'results-mode ' + celebrationClass;
             uiFeedback.innerHTML = `
                 ${resultHeader}
-                <p class="result-original-target">${targetTime.toFixed(2)}s</p>
+                <p class="result-original-target">Target: ${targetTime.toFixed(2)}s</p>
                 <div class="result-progress-container">
                     <div class="result-progress-bar ${celebrationClass}" style="width: ${heldPercent}%;"></div>
                 </div>
@@ -474,7 +509,6 @@
             if (lastRoundSuccess) {
                 currentStageIndex++;
             }
-            // No 'else' needed here, as the index is already reset in showResults on failure.
             setupNewRound();
         }
 
@@ -485,12 +519,13 @@
             if (isPracticeMode) {
                 practiceModeButton.textContent = 'Exit Practice';
                 practiceModeButton.classList.add('active');
-                metronomeInterval = setInterval(playMetronomeTick, 1000);
             } else {
                 practiceModeButton.textContent = 'Practice Mode';
                 practiceModeButton.classList.remove('active');
-                clearInterval(metronomeInterval);
-                metronomeInterval = null;
+                if (metronomeInterval) {
+                    clearInterval(metronomeInterval);
+                    metronomeInterval = null;
+                }
             }
             setupNewRound();
         }
